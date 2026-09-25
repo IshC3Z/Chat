@@ -261,6 +261,149 @@ function setSenderTheme(colorName) {
  * @param {string} rawText 
  * @returns {boolean} Success status
  */
+/**
+ * Closes all open inline message editors
+ */
+function closeAllMessageEditors() {
+  document.querySelectorAll('.message.is-editing').forEach(msgDiv => {
+    msgDiv.classList.remove('is-editing');
+    const panel = msgDiv.querySelector('.message-edit-panel');
+    if (panel) panel.remove();
+  });
+}
+
+/**
+ * Opens an inline editor for a specific message bubble
+ * @param {HTMLElement} messageDiv 
+ * @param {Object} messageObj 
+ */
+function openMessageEditor(messageDiv, messageObj) {
+  if (isExporting) return;
+  if (messageDiv.classList.contains('is-editing')) return;
+
+  // Close any other open editors first
+  closeAllMessageEditors();
+
+  messageDiv.classList.add('is-editing');
+
+  const editPanel = document.createElement('div');
+  editPanel.className = 'message-edit-panel';
+  editPanel.setAttribute('data-html2canvas-ignore', 'true');
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'message-edit-textarea';
+  textarea.value = messageObj.text;
+  textarea.rows = Math.min(5, Math.max(1, messageObj.text.split('\n').length));
+
+  const actionsDiv = document.createElement('div');
+  actionsDiv.className = 'message-edit-actions';
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'btn-edit-action btn-edit-delete';
+  deleteBtn.title = 'Delete message';
+  deleteBtn.innerHTML = `
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+    <span>Delete</span>
+  `;
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn-edit-action btn-edit-cancel';
+  cancelBtn.innerHTML = `<span>Cancel</span>`;
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'btn-edit-action btn-edit-save';
+  saveBtn.innerHTML = `
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    <span>Save</span>
+  `;
+
+  actionsDiv.appendChild(deleteBtn);
+  actionsDiv.appendChild(cancelBtn);
+  actionsDiv.appendChild(saveBtn);
+
+  editPanel.appendChild(textarea);
+  editPanel.appendChild(actionsDiv);
+  messageDiv.appendChild(editPanel);
+
+  // Auto-focus and place cursor at end
+  textarea.focus();
+  textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+
+  const adjustHeight = () => {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.max(34, textarea.scrollHeight) + 'px';
+  };
+  adjustHeight();
+  textarea.addEventListener('input', adjustHeight);
+
+  const cleanup = () => {
+    messageDiv.classList.remove('is-editing');
+    editPanel.remove();
+  };
+
+  const handleSave = () => {
+    const newText = textarea.value.trim();
+    if (newText) {
+      messageObj.text = newText;
+      const textSpan = messageDiv.querySelector('.message-text');
+      if (textSpan) textSpan.textContent = newText;
+    }
+    cleanup();
+    updateUIState();
+  };
+
+  const handleCancel = () => {
+    cleanup();
+  };
+
+  const handleDelete = () => {
+    const idx = messages.indexOf(messageObj);
+    if (idx !== -1) {
+      messages.splice(idx, 1);
+    }
+    messageDiv.remove();
+    updateUIState();
+  };
+
+  saveBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    handleSave();
+  });
+
+  cancelBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    handleCancel();
+  });
+
+  deleteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    handleDelete();
+  });
+
+  textarea.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSave();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancel();
+    }
+  });
+
+  editPanel.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+}
+
+/**
+ * Appends a message to the display container and updates the internal state array
+ * @param {'sender' | 'receiver'} type 
+ * @param {string} rawText 
+ * @returns {boolean} Success status
+ */
 function appendMessage(type, rawText) {
   const text = rawText.trim();
   if (!text) {
@@ -279,11 +422,46 @@ function appendMessage(type, rawText) {
 
   const messageDiv = document.createElement('div');
   messageDiv.classList.add('message', type);
-  messageDiv.textContent = text;
   
   if (type === 'sender') {
     messageDiv.style.backgroundColor = currentSenderColor;
   }
+
+  // Text content span
+  const textSpan = document.createElement('span');
+  textSpan.className = 'message-text';
+  textSpan.textContent = text;
+  messageDiv.appendChild(textSpan);
+
+  // Edit Pen floating button (excluded from recordings and PNGs)
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.className = 'message-edit-btn';
+  editBtn.setAttribute('data-html2canvas-ignore', 'true');
+  editBtn.setAttribute('title', 'Correct this message (Edit)');
+  editBtn.setAttribute('aria-label', 'Edit message');
+  editBtn.innerHTML = `
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 20h9"></path>
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+    </svg>
+  `;
+  messageDiv.appendChild(editBtn);
+
+  // Clicking on message selects it and reveals the pen icon; clicking pen opens editor
+  messageDiv.addEventListener('click', (e) => {
+    if (isExporting) return;
+    if (e.target.closest('.message-edit-btn')) {
+      openMessageEditor(messageDiv, messageObj);
+      return;
+    }
+
+    // Select this message bubble
+    document.querySelectorAll('.message.is-selected').forEach(m => {
+      if (m !== messageDiv) m.classList.remove('is-selected');
+    });
+    messageDiv.classList.add('is-selected');
+  });
 
   displayContainer.appendChild(messageDiv);
   displayContainer.scrollTop = displayContainer.scrollHeight;
@@ -295,6 +473,13 @@ function appendMessage(type, rawText) {
   updateUIState();
   return true;
 }
+
+// Global click outside messages to clear selected bubble outline
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.message')) {
+    document.querySelectorAll('.message.is-selected').forEach(m => m.classList.remove('is-selected'));
+  }
+});
 
 /**
  * Controls form controls interactive state during export or recording
@@ -720,7 +905,12 @@ downloadChatBtn.addEventListener('click', async () => {
     return;
   }
 
+  // Close any active inline editors before capturing
+  closeAllMessageEditors();
+  document.querySelectorAll('.message.is-selected').forEach(m => m.classList.remove('is-selected'));
+
   setControlsDisabled(true, 'png');
+  stageFrame.classList.add('exporting-png');
 
   try {
     const zip = new JSZip();
@@ -737,7 +927,8 @@ downloadChatBtn.addEventListener('click', async () => {
         backgroundColor: null, // 100% Transparent background!
         scale: 2,             // 2x Retina crispness
         useCORS: true,
-        logging: false
+        logging: false,
+        ignoreElements: (el) => el.classList && (el.classList.contains('message-edit-btn') || el.classList.contains('message-edit-panel'))
       });
 
       const pngDataUrl = canvas.toDataURL('image/png');
@@ -761,6 +952,7 @@ downloadChatBtn.addEventListener('click', async () => {
     console.error('Error generating chat export:', error);
     alert('An error occurred during export: ' + (error.message || error));
   } finally {
+    stageFrame.classList.remove('exporting-png');
     setControlsDisabled(false);
     updateUIState();
   }
@@ -826,6 +1018,10 @@ recordVideoBtn.addEventListener('click', async () => {
     alert('Please add at least one message before recording a video.');
     return;
   }
+
+  // Close any active inline editors before recording
+  closeAllMessageEditors();
+  document.querySelectorAll('.message.is-selected').forEach(m => m.classList.remove('is-selected'));
 
   // Snapshot the current messages and active theme
   const currentMessageList = [...messages];
