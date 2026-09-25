@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iMessage Mock Generator & Exporter</title>
+  
+  <!-- Required CDN Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-mode">
+  <header class="app-header">
+    <div class="header-container">
+      <div class="logo-area">
+        <div class="apple-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </div>
+        <div>
+          <h1>iMessage Mock Generator</h1>
+          <p class="subtitle">Craft authentic iOS conversations and export individual bubbles to a ZIP archive</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="loadSampleBtn" class="btn btn-outline" title="Populate demo conversation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+            <polyline points="9 11 12 14 22 4"></polyline>
+          </svg>
+          <span>Load Demo</span>
+        </button>
+        <button id="clearChatBtn" class="btn btn-outline btn-danger" title="Remove all messages">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          <span>Clear Chat</span>
+        </button>
+        <button id="themeToggleBtn" class="btn btn-outline btn-theme" title="Switch between Dark and Light mode">
+          <svg id="themeMoonIcon" class="theme-icon hidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+          <svg id="themeSunIcon" class="theme-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <span id="themeToggleText">Light Mode</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-layout">
+    <!-- Left Column: Display Side (16:9 Video Stage) -->
+    <section class="column-display" aria-label="16:9 Message Display Screen">
+      <div class="stage-wrapper">
+        <!-- Video Stage Frame with Dynamic Ratio & Chroma Key -->
+        <div class="video-stage-frame ratio-16-9 bg-green width-narrow valign-top has-shadow" id="stageFrame">
+          <!-- Backdrop reference photo layer (for visual alignment with footage) -->
+          <div id="stageBackdrop" class="stage-backdrop-layer"></div>
+
+          <!-- Stage Top Bar: Resolution & Background Info -->
+          <div class="stage-info-bar">
+            <div class="badge-ratio">
+              <span class="ratio-dot"></span>
+              <span id="ratioBadgeText">16:9 Widescreen (1080p 60FPS)</span>
+            </div>
+            <div class="stage-controls">
+              <button type="button" id="toggleBgBtn" class="stage-btn" title="Toggle Green Screen / Clean White">
+                <span class="bg-indicator green" id="bgIndicator"></span>
+                <span id="bgToggleText">Chroma Green (#00B140)</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Message Display Container (No Top Notch or Header Clutter) -->
+          <div id="displayContainer" class="display-container">
+            <div class="chat-empty-state" id="emptyStateNotice">
+              <div class="empty-icon">💬</div>
+              <p>No messages yet.</p>
+              <span>Type on the right to start generating your conversation!</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stage Footer with Dual Actions: PNGs & Video -->
+        <div class="stage-footer">
+          <div class="stage-footer-actions">
+            <button id="downloadChatBtn" class="btn btn-download-png" title="Export individual transparent PNG bubbles in a ZIP">
+              <span class="spinner hidden" id="downloadSpinner"></span>
+              <svg id="downloadIcon" class="btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span id="downloadBtnText">Export PNGs (<span id="messageCountBadge">0</span>)</span>
+            </button>
+
+            <button id="recordVideoBtn" class="btn btn-record-video" title="Record Green Screen 1080p video for video editors">
+              <span class="spinner hidden" id="recordSpinner"></span>
+              <svg id="recordIcon" class="btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              <span id="recordBtnText">Download 16:9 Video</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Studio & Video Customization Panel (Cinematic Toolkit) -->
+        <div class="studio-card" id="studioCustomizer">
+          <div class="studio-card-header">
+            <div class="studio-title">
+              <div class="studio-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                </svg>
+              </div>
+              <div>
+                <span class="studio-heading">Video Editor Studio Toolkit</span>
+                <span class="studio-subtext">Framing, chroma keying, drop shadows & scene matcher</span>
+              </div>
+            </div>
+            <span class="studio-tag">DaVinci / CapCut Pro</span>
+          </div>
+
+          <div class="studio-body">
+            <!-- Row 1: Aspect Ratio Selection -->
+            <div class="studio-row">
+              <span class="studio-label">Format / Ratio:</span>
+              <div class="studio-pill-group" id="ratioOptions">
+                <button type="button" class="studio-pill active" data-ratio="16:9" title="16:9 Landscape (YouTube / Widescreen)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="2" y="5" width="20" height="14" rx="2"></rect></svg>
+                  <span>16:9 Landscape</span>
+                </button>
+                <button type="button" class="studio-pill" data-ratio="9:16" title="9:16 Portrait (TikTok / Reels / Shorts)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="5" y="2" width="14" height="20" rx="2"></rect></svg>
+                  <span>9:16 Shorts/Reels</span>
+                </button>
+                <button type="button" class="studio-pill" data-ratio="1:1" title="1:1 Square (Social Feed)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"></rect></svg>
+                  <span>1:1 Square</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Row 2: Background Chroma Key & Screen Blend -->
+            <div class="studio-row">
+              <span class="studio-label">Background Key:</span>
+              <div class="studio-pill-group" id="bgOptions">
+                <button type="button" class="studio-pill studio-pill-color active" data-bg="green" data-color="#00B140" title="Chroma Green Screen (#00B140)">
+                  <span class="dot-swatch" style="background-color: #00B140;"></span>
+                  <span>Chroma Green</span>
+                </button>
+                <button type="button" class="studio-pill studio-pill-color" data-bg="blue" data-color="#0047BB" title="Chroma Blue Screen (#0047BB)">
+                  <span class="dot-swatch" style="background-color: #0047BB;"></span>
+                  <span>Chroma Blue</span>
+                </button>
+                <button type="button" class="studio-pill studio-pill-color" data-bg="black" data-color="#000000" title="Pure Black (#000000) for Screen/Add blend mode without chroma keying">
+                  <span class="dot-swatch" style="background-color: #000000; border: 1px solid #444;"></span>
+                  <span>Pure Black</span>
+                </button>
+                <button type="button" class="studio-pill studio-pill-color" data-bg="dark" data-color="#0b0b0f" title="Apple Dark Mode (#0b0b0f)">
+                  <span class="dot-swatch" style="background-color: #0b0b0f;"></span>
+                  <span>Dark Mode</span>
+                </button>
+                <button type="button" class="studio-pill studio-pill-color" data-bg="white" data-color="#ffffff" title="Clean White (#ffffff)">
+                  <span class="dot-swatch" style="background-color: #ffffff; border: 1px solid #cbd5e1;"></span>
+                  <span>White</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Row 3: Scene Framing / Width (Crucial for 2-actor split screens) -->
+            <div class="studio-row">
+              <span class="studio-label">Scene Framing:</span>
+              <div class="studio-pill-group" id="widthOptions">
+                <button type="button" class="studio-pill active" data-width="narrow" title="Narrow column (740px) - ideal for split screen between two actors">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 21V3m16 18V3M9 8l-3 4 3 4m6-8 3 4-3 4"></path></svg>
+                  <span>Split-Screen Middle (740px)</span>
+                </button>
+                <button type="button" class="studio-pill" data-width="standard" title="Standard width (1060px)">
+                  <span>Standard (1060px)</span>
+                </button>
+                <button type="button" class="studio-pill" data-width="wide" title="Wide column (1300px)">
+                  <span>Wide</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Row 4: Vertical Placement -->
+            <div class="studio-row">
+              <span class="studio-label">Vertical Align:</span>
+              <div class="studio-pill-group" id="valignOptions">
+                <button type="button" class="studio-pill active" data-valign="top" title="Upper Third - keeps actors seated below visible">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                  <span>Upper Third</span>
+                </button>
+                <button type="button" class="studio-pill" data-valign="center" title="Center on screen">
+                  <span>Center</span>
+                </button>
+                <button type="button" class="studio-pill" data-valign="bottom" title="Lower Third">
+                  <span>Lower Third</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Row 5: Animation Pacing -->
+            <div class="studio-row">
+              <span class="studio-label">Pacing Speed:</span>
+              <div class="studio-pill-group" id="pacingOptions">
+                <button type="button" class="studio-pill" data-pacing="fast" title="Snappy pace (0.6s typing, 1s hold)">
+                  <span>⚡ Fast (Snappy)</span>
+                </button>
+                <button type="button" class="studio-pill active" data-pacing="cinematic" title="Natural pace (1.0s typing, 1.8s hold)">
+                  <span>🎬 Cinematic (Natural)</span>
+                </button>
+                <button type="button" class="studio-pill" data-pacing="slow" title="Dramatic pauses (1.5s typing, 2.5s hold)">
+                  <span>⏳ Dramatic Pause</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Row 6: Toggles (Bounce, Sound, Cinematic Shadow) -->
+            <div class="studio-row studio-row-toggles">
+              <button type="button" class="studio-toggle active" id="toggleBounceBtn" title="Toggle realistic Apple iOS spring overshoot animation">
+                <span class="toggle-icon">🫧</span>
+                <span class="toggle-title">Apple Spring Bounce</span>
+                <span class="toggle-status" id="bounceStatusText">Active</span>
+              </button>
+
+              <button type="button" class="studio-toggle active" id="toggleSoundBtn" title="Add synchronized iMessage sound effects (swoosh & dings) to the video audio track">
+                <span class="toggle-icon">🔔</span>
+                <span class="toggle-title">iMessage Sound FX</span>
+                <span class="toggle-status" id="soundStatusText">Active</span>
+              </button>
+
+              <button type="button" class="studio-toggle active" id="toggleShadowBtn" title="Render soft cinematic drop shadows under bubbles for contrast against video footage">
+                <span class="toggle-icon">🌒</span>
+                <span class="toggle-title">Cinematic Shadow</span>
+                <span class="toggle-status" id="shadowStatusText">Active</span>
+              </button>
+
+              <button type="button" class="studio-toggle" id="uploadBackdropBtn" title="Upload a screenshot of your video footage to preview bubble positioning">
+                <span class="toggle-icon">📷</span>
+                <span class="toggle-title" id="backdropBtnTitle">Load Scene Still</span>
+                <span class="toggle-status" id="backdropStatusText">Preview</span>
+              </button>
+              <input type="file" id="backdropFileInput" accept="image/*" style="display: none;">
+            </div>
+          </div>
+        </div>
+
+        <!-- Hidden Canvas for Hardware-Accelerated 60 FPS Video Recording -->
+        <canvas id="videoRecordingCanvas" width="1920" height="1080" style="display: none;"></canvas>
+      </div>
+    </section>
+
+    <!-- Right Column: Typing Side (Control Panel) -->
+    <section class="column-typing" aria-label="Conversation Controls">
+      <div class="control-panel">
+        <div class="panel-header">
+          <h2>Message Controls</h2>
+          <p>Compose messages for both participants. Supports multi-line input.</p>
+        </div>
+
+        <!-- Section 1: Sender Controls -->
+        <div class="control-card sender-card">
+          <div class="card-header">
+            <div class="role-badge sender-badge">
+              <span class="dot sender-dot"></span>
+              <span>Sender</span>
+            </div>
+            
+            <!-- Color Picker: Blue & Purple -->
+            <div class="color-picker-container" aria-label="Sender message color">
+              <span class="color-picker-label">Color:</span>
+              <div class="color-picker-options">
+                <button type="button" class="color-choice-btn color-choice-blue active" id="colorBlueBtn" title="Set Blue Bubbles">
+                  <span class="color-dot bg-blue"></span>
+                  <span>Blue</span>
+                </button>
+                <button type="button" class="color-choice-btn color-choice-purple" id="colorPurpleBtn" title="Set Purple Bubbles">
+                  <span class="color-dot bg-purple"></span>
+                  <span>Purple</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <textarea 
+              id="senderInput" 
+              class="message-textarea sender-textarea" 
+              rows="3" 
+              placeholder="Type sender message... (Press Enter to send, Shift+Enter for new line)"
+            ></textarea>
+            <div class="card-actions">
+              <span class="char-count" id="senderCharCount">0 chars</span>
+              <button id="sendSenderBtn" class="btn btn-send-sender">
+                <span>Send as Sender</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: Receiver Controls -->
+        <div class="control-card receiver-card">
+          <div class="card-header">
+            <div class="role-badge receiver-badge">
+              <span class="dot receiver-dot"></span>
+              <span>Receiver (Gray Bubbles)</span>
+            </div>
+            <span class="hint-text">Aligned left</span>
+          </div>
+          <div class="card-body">
+            <textarea 
+              id="receiverInput" 
+              class="message-textarea receiver-textarea" 
+              rows="3" 
+              placeholder="Type receiver message... (Press Enter to send, Shift+Enter for new line)"
+            ></textarea>
+            <div class="card-actions">
+              <span class="char-count" id="receiverCharCount">0 chars</span>
+              <button id="sendReceiverBtn" class="btn btn-send-receiver">
+                <span>Send as Receiver</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
